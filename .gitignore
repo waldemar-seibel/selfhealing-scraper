@@ -1,0 +1,12 @@
+.venv/
+.env
+bilder/
+ergebnis_*.csv
+messung_*.txt
+uebungsseite/site/
+uebungsseite/wahrheit.csv
+__pycache__/
+selektoren.json
+selektoren_alt_*.json
+reparatur_log.txt
+.pytest_cache/
