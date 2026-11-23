@@ -121,7 +121,7 @@ def main():
         browser.close()
 
     ziel = HIER / "ergebnis_a.csv"
-    with open(ziel, "w", newline="", encoding="utf-8") as f:
+    with open(ziel, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, fieldnames=["id", "seite", "firma", "titel", "ort", "datum"], delimiter=";")
         w.writeheader()
         w.writerows(alle)

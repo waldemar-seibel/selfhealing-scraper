@@ -24,12 +24,12 @@ FELDER = ["firma", "titel", "ort", "datum"]
 def lies(pfad: Path) -> list[dict]:
     if not pfad.exists():
         return []
-    with open(pfad, encoding="utf-8") as f:
+    with open(pfad, encoding="utf-8-sig") as f:
         return list(csv.DictReader(f, delimiter=";"))
 
 
 def norm(s) -> str:
-    return " ".join(str(s or "").lower().split())
+    return " ".join(str(s if s is not None else "").lower().split())
 
 
 def schluessel(z: dict) -> tuple:

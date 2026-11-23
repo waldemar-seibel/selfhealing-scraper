@@ -41,3 +41,9 @@ def seite(tmp_path, request):
     yield f"http://127.0.0.1:{srv.server_address[1]}/seite-1.html", wahr, tmp_path
     srv.shutdown()
     srv.server_close()
+
+
+@pytest.fixture
+def wahr_daten(tmp_path):
+    """Nur die 'echten' Daten (120 Stellen, in der Reihenfolge der Seiten), ohne Browser und Webserver."""
+    return _seite_bauen(tmp_path, "alt")

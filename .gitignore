@@ -7,6 +7,9 @@ uebungsseite/site/
 uebungsseite/wahrheit.csv
 __pycache__/
 selektoren.json
+baseline.json
+baseline.json.tmp
+selektoren.json.tmp
 selektoren_alt_*.json
 reparatur_log.txt
 .pytest_cache/

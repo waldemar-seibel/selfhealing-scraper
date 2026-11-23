@@ -58,8 +58,25 @@ python variante_c_kombi.py
 python vergleich.py
 ```
 Die Selektoren stehen in `selektoren.json`. Ändert sich das Design, holt sich das Programm bei
-Claude einen Vorschlag, prüft ihn gegen einen Screenshot und speichert ihn nur, wenn die Anzahl
-der Stellen übereinstimmt. Was passiert ist, steht in `reparatur_log.txt`.
+Claude einen Vorschlag, prüft ihn gegen einen Screenshot und speichert ihn nur, wenn Anzahl UND
+Inhalt (Firma/Titel-Paare, Ort, Datum) übereinstimmen. Was passiert ist, steht in `reparatur_log.txt`.
+
+Vor jeder Reparatur macht C einen kostenlosen Gesundheitscheck: Wie viele Stellen haben noch einen
+Ort, ein Datum, eine Firma? Das wird mit dem Normalzustand in `baseline.json` verglichen. So fällt
+auch ein Teilbruch auf, bei dem die Karten noch gefunden werden, aber ein Feld leer ist.
+
+Weitere Designs zum Ausprobieren (immer erst `erzeugen.py --design ...`, dann C):
+
+| Design | Was passiert | Was C tun soll |
+|---|---|---|
+| `neu` | Karten heißen "job" | reparieren |
+| `teil` | nur der Ort heißt "location" | Teilbruch erkennen, reparieren |
+| `felder` | alle Klassen umbenannt | reparieren |
+| `tausch` | Firma und Titel vertauscht | erkennen, reparieren |
+| `leer` | gültige Seite "Keine Treffer" | NICHT reparieren |
+
+Tipp für `teil`: Erst `--design alt` und C laufen lassen (das legt die Baseline an), dann
+`--design teil` und C noch einmal.
 
 ## 6. Tests
 

@@ -14,6 +14,9 @@ Warum das interessant ist: Diese Variante braucht KEINE Selektoren. Ändert sich
 liest Claude trotzdem, was ein Mensch sehen würde. Dafür ist sie langsamer, kostet Geld pro Bild
 und kann sich verlesen. Genau das messen wir im Vergleich.
 
+Fällt die API bei einem Bild aus (Netz, Überlastung), wird sie mehrfach wiederholt. Klappt es dann
+immer noch, wird NUR diese Seite als "nicht gelesen" vermerkt, der Lauf geht weiter.
+
 Braucht ANTHROPIC_API_KEY (Umgebungsvariable oder Datei .env in diesem Ordner:
     ANTHROPIC_API_KEY=sk-ant-...
 """
@@ -21,21 +24,20 @@ import argparse
 import base64
 import csv
 import json
-import os
 import random
 import re
 import time
 from pathlib import Path
 
-import requests
 from playwright.sync_api import sync_playwright
+
+import llm
+from llm import MODELL, PREIS_USD_PRO_MIO, USD_EUR, api_key  # noqa: F401  (von Variante C mitbenutzt)
 
 HIER = Path(__file__).parent
 BILDER = HIER / "bilder"
 START_URL = "http://localhost:8000/seite-1.html"
-MODELL = "claude-haiku-5-5"
-PREIS_USD_PRO_MIO = (0.10, 0.50)   # Eingabe, Ausgabe (Annahme, vor großen Läufen prüfen)
-USD_EUR = 0.92
+PAUSE_SEKUNDEN = (1.0, 2.0)            # zufällige Pause zwischen Seiten
 
 AUFTRAG = """Auf dem Bild ist eine Seite einer Jobbörse. Lies ALLE Stellenanzeigen ab.
 Werbung/Anzeigen ("Gesponsert", "Anzeige") sind KEINE Stellen und werden weggelassen.
@@ -43,16 +45,6 @@ Gib für jede Stelle Firma, Titel, Ort und Datum genau so an, wie sie auf dem Bi
 Fehlt der Ort, lass das Feld leer. Erfinde nichts.
 Antworte NUR mit JSON in dieser Form:
 [{"firma": "...", "titel": "...", "ort": "...", "datum": "..."}]"""
-
-
-def api_key() -> str:
-    k = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    env = HIER / ".env"
-    if not k and env.exists():
-        for zeile in env.read_text(encoding="utf-8").splitlines():
-            if zeile.startswith("ANTHROPIC_API_KEY="):
-                k = zeile.split("=", 1)[1].strip().strip('"')
-    return k
 
 
 def screenshots_machen(url: str, unsichtbar: bool) -> list[Path]:
@@ -71,23 +63,20 @@ def screenshots_machen(url: str, unsichtbar: bool) -> list[Path]:
             weiter = page.locator("text=Weiter")   # absichtlich nach sichtbarem Text, nicht nach Klasse
             if not weiter.count():
                 break
-            time.sleep(random.uniform(1.0, 2.0))
+            time.sleep(random.uniform(*PAUSE_SEKUNDEN))
             weiter.first.click()
         browser.close()
     return pfade
 
 
 def bild_lesen(pfad: Path, key: str) -> tuple[list[dict], int, int]:
+    """Liest ein Bild. Wirft llm.ApiFehler, wenn die API auch nach Wiederholungen nicht antwortet."""
     b64 = base64.b64encode(pfad.read_bytes()).decode()
-    r = requests.post("https://api.anthropic.com/v1/messages", timeout=120, headers={
-        "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-        json={"model": MODELL, "max_tokens": 4000,
-              "output_config": {"effort": "low"},
-              "messages": [{"role": "user", "content": [
-                  {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}},
-                  {"type": "text", "text": AUFTRAG}]}]})
-    r.raise_for_status()
-    d = r.json()
+    d = llm.api_post({"model": MODELL, "max_tokens": 4000,
+                      "output_config": {"effort": "low"},
+                      "messages": [{"role": "user", "content": [
+                          {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}},
+                          {"type": "text", "text": AUFTRAG}]}]}, key)
     text = "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
     u = d.get("usage", {})
     return antwort_parsen(text), u.get("input_tokens", 0), u.get("output_tokens", 0)
@@ -122,25 +111,33 @@ def main():
         print("FEHLER: ANTHROPIC_API_KEY fehlt (Umgebungsvariable oder .env in diesem Ordner).")
         return
 
-    alle, tin, tout = [], 0, 0
+    alle, kosten, nicht_gelesen = [], llm.neue_kosten(), []
     for nr, pfad in enumerate(pfade, 1):
-        stellen, i, o = bild_lesen(pfad, key)
-        tin, tout = tin + i, tout + o
+        try:
+            stellen, i, o = bild_lesen(pfad, key)
+        except llm.ApiFehler as e:
+            print(f"  Seite {nr}: NICHT gelesen ({e})")
+            nicht_gelesen.append(nr)
+            continue
+        llm.buche(kosten, i, o)
         for s in stellen:
             s["seite"] = nr
         alle += stellen
         print(f"  Claude liest Seite {nr}: {len(stellen)} Stellen ({i} Tokens rein, {o} raus)")
 
-    with open(HIER / "ergebnis_b.csv", "w", newline="", encoding="utf-8") as f:
+    with open(HIER / "ergebnis_b.csv", "w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, fieldnames=["seite", "firma", "titel", "ort", "datum"], delimiter=";",
                            extrasaction="ignore")
         w.writeheader()
         w.writerows(alle)
     dauer = time.time() - start
-    kosten = (tin * PREIS_USD_PRO_MIO[0] + tout * PREIS_USD_PRO_MIO[1]) / 1e6 * USD_EUR
+    eur = llm.kosten_eur(kosten)
     (HIER / "messung_b.txt").write_text(
-        f"dauer_sekunden={dauer:.1f}\nkosten_eur={kosten:.4f}\ntokens_ein={tin}\ntokens_aus={tout}\n", encoding="utf-8")
-    print(f"\n{len(alle)} Stellen in {dauer:.1f} s, Kosten ca. {kosten:.3f} €: {HIER / 'ergebnis_b.csv'}")
+        f"dauer_sekunden={dauer:.1f}\nkosten_eur={eur:.4f}\ntokens_ein={kosten['ein']}\n"
+        f"tokens_aus={kosten['aus']}\nseiten_nicht_gelesen={len(nicht_gelesen)}\n", encoding="utf-8")
+    print(f"\n{len(alle)} Stellen in {dauer:.1f} s, Kosten ca. {eur:.3f} €: {HIER / 'ergebnis_b.csv'}")
+    if nicht_gelesen:
+        print(f"ACHTUNG: Seiten nicht gelesen: {nicht_gelesen}")
 
 
 if __name__ == "__main__":
