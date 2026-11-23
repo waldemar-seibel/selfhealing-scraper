@@ -105,6 +105,7 @@ python uebungsseite/erzeugen.py --design neu        # simulate a redesign
 #                  tausch (company/title classes swapped), leer (valid page without results)
 python variante_c_kombi.py                          # C
 python vergleich.py                                 # compare against uebungsseite/wahrheit.csv
+python benchmark.py                                 # all failure patterns, simulated Claude, free
 ```
 
 B and C need `ANTHROPIC_API_KEY` (environment variable or `.env` in the project folder, which
@@ -122,8 +123,51 @@ Claude**, so they need no API key, cost nothing and are deterministic. They cove
 listings and skips ads; B end to end (including a failing API call for one page); C for every design
 (full redesign, partial break, renamed fields, swapped fields with and without baseline); C does *not*
 repair a genuinely empty page; a healthy run makes no API call; C rejects wrong proposals (extra card,
-wrong content, invalid selector) without losing data; API outages lose at most the affected page; retries
+wrong content, invalid selector) without losing data; the benchmark itself; API outages lose at most the affected page; retries
 with backoff; cost tiers; HTML trimming; atomic saving and backups; the verification rules.
+
+## Benchmark
+
+`python benchmark.py` runs C against ten situations, each on a fresh copy of the practice site, and
+compares the result with the ground truth. It measures whether C **decided correctly** (repair, do
+nothing, or reject a bad proposal), whether it **did damage** (persisted a wrong or unnecessary proposal),
+how many fields end up correct, and the effort (image reads, text requests, cost).
+
+```bash
+python benchmark.py                          # simulated Claude: free, no API key, repeatable
+python benchmark.py --lesefehler             # the simulated screenshot read contains typos
+python benchmark.py --echt --wiederholungen 3   # real Claude, ~1 ct per round, needs ANTHROPIC_API_KEY
+```
+
+Result of the simulated run (the table is also written to `benchmark_ergebnis.md`):
+
+| Situation | Expected | C did | Damage | Fields correct |
+|---|---|---|---|---|
+| healthy site (control) | do nothing | nothing | no | 480/480 |
+| healthy site, cold start without baseline | do nothing | nothing (one screenshot check) | no | 480/480 |
+| valid page without results | do nothing | nothing | no | no listings expected |
+| relaunch: cards renamed | repair | repaired | no | 480/480 |
+| partial break: only location renamed | repair | repaired | no | 480/480 |
+| all classes renamed | repair | repaired | no | 480/480 |
+| company/title swapped | repair | repaired | no | 480/480 |
+| company/title swapped, cold start | repair | repaired | no | 480/480 |
+| bad proposal: ad counted as listing | reject | rejected | no | 480/480 |
+| bad proposal: company/title reversed | reject | rejected | no | 480/480 |
+
+10 of 10 decisions correct, 0 damage, 0 unnecessary repair attempts on healthy pages.
+
+What this does and does not show:
+
+* In the simulated mode the screenshot read is perfect and the proposals are fixed, so it measures the
+  **verification logic**, not how good Claude is. The ten situations were also the ones the logic was
+  built against, so passing them is necessary, not sufficient. Results with real Claude over several runs
+  are not published yet; `--echt` is there to produce them.
+* With `--lesefehler` the decisions stay identical, but the two "reject" situations drop to 470/480 fields:
+  when C rejects a proposal it reads the pages through the screenshot, and the misreads end up in the data.
+  Accepted repairs keep the exact DOM data (480/480).
+* Rejection is expensive: two failed attempts, then every remaining page goes through the screenshot,
+  about 0.67 ct instead of 0.09 ct for a successful repair.
+* The test suite contains a check that the benchmark reports *damage* when the verification is disabled.
 
 ## Scope and ethics
 

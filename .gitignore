@@ -13,3 +13,4 @@ selektoren.json.tmp
 selektoren_alt_*.json
 reparatur_log.txt
 .pytest_cache/
+benchmark_ergebnis.md
