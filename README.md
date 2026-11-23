@@ -23,8 +23,9 @@ The user interface and console output are in German.
 ## Results
 
 Measured on Windows 11, Python 3.14, model `claude-haiku-5-5`, 10 pages / 120 listings.
-These numbers are from the first version of C, before the health check and the content
-verification below were added; they have not been re-measured. CI runs the tests on Python 3.12 and 3.13.
+The C column was re-measured on 2026-11-23 with the health check and content verification described
+below (Python 3.14, Playwright 1.65, one run, the repair case being the partial break `--design teil`).
+A and B are unchanged. CI runs the tests on Python 3.12 and 3.13.
 
 | | A: selectors | B: screenshot + LLM | C: self-healing |
 |---|---|---|---|
@@ -34,12 +35,17 @@ verification below were added; they have not been re-measured. CI runs the tests
 | Time | ~19 s | ~55 s | ~25 s (incl. one repair) |
 | Cost | 0 € | ~0.65 ct | ~0.09 ct |
 | After redesign (`--design neu`) | **fails** (timeout) | works | **repairs itself** |
+| After partial break (`--design teil`, only the location class renamed) | **silently loses the location** | works | **detects and repairs itself**, 120 / 120 incl. location, ~23 s, ~0.09 ct |
 
-Two observations worth more than the table:
+Three observations worth more than the table:
 
 1. **The LLM is not deterministic.** Same screenshot, same prompt: one run was perfect, the
    other misread a town name. Evaluate LLM extraction over several runs, never one.
-2. **An LLM proposal is a hypothesis, not a fix.** In C the proposed selectors are only accepted
+2. **Counting cards is not a health check.** After renaming only the location class, the first version
+   of C reported "120/120 found, method A, 0 €" while the location was correct for just 6 of 120 listings
+   (the 6 that really had none). C now compares each field's fill rate with its own history and caught it
+   ("location filled for 0%, before 95%").
+3. **An LLM proposal is a hypothesis, not a fix.** In C the proposed selectors are only accepted
    if they find the same number of listings as an independent screenshot read and every listing
    has company and title. The tests include a deliberately bad proposal (`article.karte`, which
    also matches the ad) that is correctly rejected: 13 vs. 12.
