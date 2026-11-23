@@ -156,12 +156,31 @@ Result of the simulated run (the table is also written to `benchmark_ergebnis.md
 
 10 of 10 decisions correct, 0 damage, 0 unnecessary repair attempts on healthy pages.
 
+Result with **real Claude** (`python benchmark.py --echt --wiederholungen 3`, model `claude-haiku-5-5`,
+2026-11-23, Windows 11, Python 3.14; the two bad-proposal situations only exist in the simulation):
+
+| Situation | Correct decisions | Damage | Fields correct | Cost per run | Time per run |
+|---|---|---|---|---|---|
+| healthy site (control) | 3/3 | 0 | 480/480 | 0 ct | 3 to 6 s |
+| healthy site, cold start without baseline | 3/3 | 0 | 480/480 | 0.06 ct | 8 to 11 s |
+| valid page without results | 3/3 | 0 | n/a | 0.01 to 0.02 ct | 5 to 6 s |
+| relaunch: cards renamed | 3/3 | 0 | 480/480 | 0.10 ct | 12 to 14 s |
+| partial break: only location renamed | 3/3 | 0 | 480/480 | 0.09 ct | 9 to 11 s |
+| all classes renamed | 3/3 | 0 | 480/480 | 0.09 to 0.10 ct | 11 to 14 s |
+| company/title swapped | 3/3 | 0 | 480/480 | 0.10 to 0.11 ct | 11 to 13 s |
+| company/title swapped, cold start | 3/3 | 0 | 480/480 | 0.11 to 0.12 ct | 11 to 13 s |
+
+24 of 24 runs decided correctly, 0 damage, all data complete and correct, 1.76 ct in total.
+
 What this does and does not show:
 
 * In the simulated mode the screenshot read is perfect and the proposals are fixed, so it measures the
   **verification logic**, not how good Claude is. The ten situations were also the ones the logic was
-  built against, so passing them is necessary, not sufficient. Results with real Claude over several runs
-  are not published yet; `--echt` is there to produce them.
+  built against, so passing them is necessary, not sufficient.
+* The real-Claude table is small: 8 situations, 3 rounds, one model, one fictional site. Claude proposed the
+  right selectors on the first try every time, so a bad proposal from the real model, and the verification
+  rejecting it, has not been observed. That case is covered only by the simulation. Three rounds show no
+  run-to-run variation in the decisions, but too few to rule out rare misses.
 * With `--lesefehler` the decisions stay identical, but the two "reject" situations drop to 470/480 fields:
   when C rejects a proposal it reads the pages through the screenshot, and the misreads end up in the data.
   Accepted repairs keep the exact DOM data (480/480).
